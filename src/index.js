@@ -104,6 +104,48 @@ function processVueFile(filePath) {
       }
     );
 
+    // 处理包含中文和插值表达式的内容
+    const mixedContentRegex = />([^<>]*[\u4e00-\u9fa5][^<>]*\{\{[\s\S]*?\}\}[^<>]*|[^<>]*\{\{[\s\S]*?\}\}[^<>]*[\u4e00-\u9fa5][^<>]*)</g;
+    processedTemplate = processedTemplate.replace(
+      mixedContentRegex,
+      (match, text) => {
+        if (!/\$t\(['"].*['"]\)/.test(text)) {
+          const interpolationMatch = text.match(/\{\{([\s\S]*?)\}\}/);
+          if (interpolationMatch) {
+            const expression = interpolationMatch[1].trim();
+            
+            // 先提取纯文本内容
+            let template = text
+              .replace(/\{\{[\s\S]*?\}\}/g, '') // 先移除所有插值表达式
+              .replace(/\s+/g, ' ') // 将多个空白字符替换为单个空格
+              .trim(); // 清理首尾空格
+
+            // 在适当位置插入占位符
+            const insertIndex = text.indexOf('{{');
+            if (insertIndex !== -1) {
+              // 计算插值表达式在清理后文本中的相对位置
+              const cleanedTextBeforeInterpolation = text.slice(0, insertIndex)
+                .replace(/\s+/g, ' ')
+                .trim();
+              const insertPosition = template.indexOf(cleanedTextBeforeInterpolation) + 
+                cleanedTextBeforeInterpolation.length;
+              
+              template = template.slice(0, insertPosition) + 
+                '{props}' + 
+                template.slice(insertPosition);
+            }
+
+            if (/[\u4e00-\u9fa5]/.test(template)) {
+              const key = generateKey(template, filePath);
+              translations[key] = template;
+              return `>{{ $t("${key}", { props: ${expression} }) }}<`;
+            }
+          }
+        }
+        return match;
+      }
+    );
+
     // 处理三元表达式中的中文
     const ternaryRegex = /\{\{([^}]+)\}\}/g;
     processedTemplate = processedTemplate.replace(
@@ -123,43 +165,6 @@ function processVueFile(filePath) {
           });
 
         return `{{ ${processedExpression} }}`;
-      }
-    );
-
-    // 处理包含插值表达式的中文内容
-    const interpolationRegex =
-      />([^<>]*[\u4e00-\u9fa5][^<>]*\{\{[^}]+\}}[^<>]*[\u4e00-\u9fa5][^<>]*)</g;
-    processedTemplate = processedTemplate.replace(
-      interpolationRegex,
-      (match, text) => {
-        if (text.trim() && !/\$t\(['"].*['"]\)/.test(text)) {
-          // 提取插值表达式
-          const interpolationMatch = text.match(/\{\{([^}]+)\}\}/);
-          if (interpolationMatch) {
-            const expression = interpolationMatch[1].trim();
-            // 构建新的文本模板，将插值表达式替换为占位符，并清理格式
-            const template = text
-              .replace(/\{\{[^}]+\}\}/, "{{ props }}")
-              .replace(/\s+/g, " ") // 将多个空白字符替换为单个空格
-              .trim(); // 去除首尾空白
-
-            // 检查是否已存在相同的翻译模板
-            let existingKey = null;
-            for (const [key, value] of Object.entries(translations)) {
-              if (value === template) {
-                existingKey = key;
-                break;
-              }
-            }
-
-            const key = existingKey || generateKey(template, filePath);
-            if (!existingKey) {
-              translations[key] = template;
-            }
-            return `>{{ $t("${key}", { props: ${expression} }) }}<`;
-          }
-        }
-        return match;
       }
     );
 
