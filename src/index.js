@@ -272,13 +272,13 @@ function processVueFile(filePath) {
           return;
         }
 
-        if (/[\u4e00-\u9fa5]/.test(node.value)) {
+        if (/[\u4e00-\u9fa5]/.test(node.value) && !isInWhitelist(node.value)) {
           const key = generateKey(node.value, filePath);
           translations[key] = node.value;
           modifications.push({
             start: node.start,
             end: node.end,
-            replacement: `t("${key}")`,
+            replacement: `t("${key}")`
           });
         }
       },
@@ -374,7 +374,7 @@ function processJTScriptFile(filePath) {
         modifications.push({
           start: node.start,
           end: node.end,
-          replacement: `t("${key}", {props: ${expressions}})`,
+          replacement: `t("${key}", {props: ${expressions}})`
         });
       }
     },
@@ -394,13 +394,13 @@ function processJTScriptFile(filePath) {
         return;
       }
 
-      if (/[\u4e00-\u9fa5]/.test(node.value)) {
+      if (/[\u4e00-\u9fa5]/.test(node.value) && !isInWhitelist(node.value)) {
         const key = generateKey(node.value, filePath);
         translations[key] = node.value;
         modifications.push({
           start: node.start,
           end: node.end,
-          replacement: `t("${key}")`,
+          replacement: `t("${key}")`
         });
       }
     },
@@ -416,12 +416,84 @@ function processJTScriptFile(filePath) {
   writeFileSync(filePath, result, "utf-8");
 }
 
+const whitelist = new Set();
+const whitelistFile = 'whitelist.json';
+
+// 加载白名单
+function loadWhitelist() {
+  try {
+    if (existsSync(whitelistFile)) {
+      const data = JSON.parse(readFileSync(whitelistFile, 'utf-8'));
+      data.forEach(item => whitelist.add(item));
+    }
+  } catch (error) {
+    console.error('加载白名单时发生错误：', error);
+  }
+}
+
+// 保存白名单
+function saveWhitelist() {
+  try {
+    writeFileSync(whitelistFile, JSON.stringify(Array.from(whitelist), null, 2), 'utf-8');
+  } catch (error) {
+    console.error('保存白名单时发生错误：', error);
+  }
+}
+
+// 检查文本是否在白名单中
+function isInWhitelist(text) {
+  return whitelist.has(text);
+}
+
 program
   .version("1.0.0")
-  .argument("<source>", "要处理的文件或目录路径")
+  .argument("[source]", "要处理的文件或目录路径")
   .option("-o, --output <file>", "输出的翻译JSON文件路径", "translations.json")
+  .option("-i, --ignore <texts...>", "添加到白名单的中文文本")
+  .option("-l, --list", "查看白名单列表")
+  .option("-d, --delete <text>", "从白名单中删除指定文本")
+  .option("-r, --reset", "重置白名单")
   .action((source, options) => {
     try {
+      // 加载白名单
+      loadWhitelist();
+
+      // 处理白名单相关命令
+      if (options.list) {
+        console.log('当前白名单列表：');
+        whitelist.forEach(item => console.log(item));
+        return;
+      }
+
+      if (options.delete) {
+        if (whitelist.delete(options.delete)) {
+          saveWhitelist();
+          console.log(`已从白名单中删除：${options.delete}`);
+        } else {
+          console.log('白名单中不存在该文本');
+        }
+        return;
+      }
+
+      if (options.reset) {
+        whitelist.clear();
+        saveWhitelist();
+        console.log('白名单已重置');
+        return;
+      }
+
+      if (options.ignore) {
+        options.ignore.forEach(text => whitelist.add(text));
+        saveWhitelist();
+        console.log('已添加到白名单：', options.ignore);
+        return;
+      }
+
+      if (!source) {
+        console.error('请指定要处理的文件或目录路径');
+        process.exit(1);
+      }
+
       // 如果输出文件已存在，先读取已有的翻译
       if (existsSync(options.output)) {
         const existingTranslations = JSON.parse(
