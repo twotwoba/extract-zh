@@ -1,6 +1,6 @@
 {
   "name": "extract-zh-vue",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "A tool to extract Chinese characters from Vue and TypeScript/JavaScript files for i18n",
   "main": "src/index.js",
   "type": "module",
