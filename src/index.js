@@ -48,7 +48,7 @@ function processVueFile(filePath) {
       (match, space, attr, text) => {
         // 检查是否在注释中
         const isInComment = /<!--[\s\S]*?-->/.test(match);
-        if (!isInComment && !/\$t\(['"].*['"]\)/.test(text)) {
+        if (!isInComment && !/\$t\(['"].*['"]\)/.test(text) && !isInWhitelist(text)) {
           const key = generateKey(text, filePath);
           translations[key] = text;
           return `${space}:${attr}="$t('${key}')"`;
@@ -71,7 +71,7 @@ function processVueFile(filePath) {
           return "{props}";
         });
 
-        if (/[\u4e00-\u9fa5]/.test(cleanText)) {
+        if (/[\u4e00-\u9fa5]/.test(cleanText) && !isInWhitelist(cleanText)) {
           const key = generateKey(cleanText, filePath);
           translations[key] = cleanText;
           return `:${attr}="$t('${key}', { props: ${expressions[0]} })"`;
@@ -94,6 +94,7 @@ function processVueFile(filePath) {
         const processedContent = content.replace(
           /(['"])([^'"]*[\u4e00-\u9fa5][^'"]*)\1/g,
           (_, quote, text) => {
+            if(isInWhitelist(text)) return text;
             const key = generateKey(text, filePath);
             translations[key] = text;
             return `${text.includes("{") ? text : `$t('${key}')`}`;
@@ -117,6 +118,7 @@ function processVueFile(filePath) {
         const processedExpression = expression.replace(
           /(['"])((?:(?!\1).)*[\u4e00-\u9fa5](?:(?!\1).)*)\1/g,
           (str, quote, text) => {
+            if(isInWhitelist(text)) return text
             const key = generateKey(text, filePath);
             translations[key] = text;
             return `$t("${key}")`;
@@ -164,7 +166,7 @@ function processVueFile(filePath) {
          // 清理和格式化模板
          template = currentText.replace(/\s+/g, ' ').trim();
  
-         if (/[\u4e00-\u9fa5]/.test(template)) {
+         if (/[\u4e00-\u9fa5]/.test(template) && !isInWhitelist(template)) {
            const key = generateKey(template, filePath);
            translations[key] = template;
            const propsObj = expressions
@@ -182,7 +184,7 @@ function processVueFile(filePath) {
     processedTemplate = processedTemplate.replace(
       betweenTagsRegex,
       (match, text) => {
-        if (text.trim() && !/\$t\(['"].*['"]\)/.test(text)) {
+        if (text.trim() && !/\$t\(['"].*['"]\)/.test(text) && !isInWhitelist(text)) {
           const key = generateKey(text.trim(), filePath);
           translations[key] = text.trim();
           return `>{{ $t("${key}") }}<`;
@@ -228,7 +230,7 @@ function processVueFile(filePath) {
           })
           .join("");
 
-        if (/[\u4e00-\u9fa5]/.test(value)) {
+        if (/[\u4e00-\u9fa5]/.test(value) && !isInWhitelist(value)) {
           const cleanText = value.replace(/\${[^}]+}/g, "{props}");
           const key = generateKey(cleanText, filePath);
           translations[key] = cleanText;
@@ -357,7 +359,7 @@ function processJTScriptFile(filePath) {
         })
         .join("");
 
-      if (/[\u4e00-\u9fa5]/.test(value)) {
+      if (/[\u4e00-\u9fa5]/.test(value) && !isInWhitelist(value)) {
         const cleanText = value.replace(/\${[^}]+}/g, "{props}");
         const key = generateKey(cleanText, filePath);
         translations[key] = cleanText;
