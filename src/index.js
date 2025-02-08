@@ -68,7 +68,7 @@ function processVueFile(filePath) {
         const expressions = [];
         const cleanText = text.replace(/\${([^}]+)}/g, (_, expr) => {
           expressions.push(expr.trim());
-          return '{props}';
+          return "{props}";
         });
 
         if (/[\u4e00-\u9fa5]/.test(cleanText)) {
@@ -219,11 +219,18 @@ function processVueFile(filePath) {
           const key = generateKey(cleanText, filePath);
           translations[key] = cleanText;
 
+          // 获取完整的表达式
           const expressions = node.expressions
             .map((expr) => {
-              if (expr.type === "MemberExpression") {
-                return `${expr.object.name}.${expr.property.name}`;
+              // 处理方法调用
+              if (expr.type === "CallExpression") {
+                return script.slice(expr.start, expr.end);
               }
+              // 处理成员表达式
+              if (expr.type === "MemberExpression") {
+                return script.slice(expr.start, expr.end);
+              }
+              // 其他情况
               return expr.name || "props";
             })
             .join(", ");
@@ -270,6 +277,30 @@ function processVueFile(filePath) {
       scriptContent =
         scriptContent.slice(0, start) + replacement + scriptContent.slice(end);
     });
+
+    // 如果有中文被替换，添加 i18n 导入
+    if (modifications.length > 0) {
+      // 检查是否已经导入了 useI18n
+      const hasI18nImport = script.includes(
+        "import { useI18n } from 'vue-i18n'"
+      );
+      const hasI18nInit = script.includes("const { t } = useI18n()");
+      if (!hasI18nImport && !hasI18nInit) {
+        const importRegex = /^import .+$/gm;
+        const matches = [...scriptContent.matchAll(importRegex)];
+        if (matches.length > 0) {
+          const lastImport = matches[matches.length - 1];
+          const insertPosition = lastImport.index + lastImport[0].length;
+          const i18nImport =
+            "\nimport { useI18n } from 'vue-i18n'\nconst { t } = useI18n()\n";
+
+          scriptContent =
+            scriptContent.slice(0, insertPosition) +
+            i18nImport +
+            scriptContent.slice(insertPosition);
+        }
+      }
+    }
 
     result = result.replace(script, scriptContent);
   }
