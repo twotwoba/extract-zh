@@ -5,5 +5,5 @@
 npm i -g extract-zh
 
 # 提取
-ez  file_path -o file_path
+ez file_path -o file_path
 ```

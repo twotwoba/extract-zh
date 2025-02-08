@@ -5,7 +5,7 @@
   "main": "src/index.js",
   "type": "module",
   "bin": {
-    "extract-zh": "./src/index.js"
+    "ez": "./src/index.js"
   },
   "scripts": {
     "start": "node src/index.js"
