@@ -104,69 +104,78 @@ function processVueFile(filePath) {
       }
     );
 
-    // 处理包含中文和插值表达式的内容
-    const mixedContentRegex = />([^<>]*[\u4e00-\u9fa5][^<>]*\{\{[\s\S]*?\}\}[^<>]*|[^<>]*\{\{[\s\S]*?\}\}[^<>]*[\u4e00-\u9fa5][^<>]*)</g;
-    processedTemplate = processedTemplate.replace(
-      mixedContentRegex,
-      (match, text) => {
-        if (!/\$t\(['"].*['"]\)/.test(text)) {
-          const interpolationMatch = text.match(/\{\{([\s\S]*?)\}\}/);
-          if (interpolationMatch) {
-            const expression = interpolationMatch[1].trim();
-            
-            // 先提取纯文本内容
-            let template = text
-              .replace(/\{\{[\s\S]*?\}\}/g, '') // 先移除所有插值表达式
-              .replace(/\s+/g, ' ') // 将多个空白字符替换为单个空格
-              .trim(); // 清理首尾空格
-
-            // 在适当位置插入占位符
-            const insertIndex = text.indexOf('{{');
-            if (insertIndex !== -1) {
-              // 计算插值表达式在清理后文本中的相对位置
-              const cleanedTextBeforeInterpolation = text.slice(0, insertIndex)
-                .replace(/\s+/g, ' ')
-                .trim();
-              const insertPosition = template.indexOf(cleanedTextBeforeInterpolation) + 
-                cleanedTextBeforeInterpolation.length;
-              
-              template = template.slice(0, insertPosition) + 
-                '{props}' + 
-                template.slice(insertPosition);
-            }
-
-            if (/[\u4e00-\u9fa5]/.test(template)) {
-              const key = generateKey(template, filePath);
-              translations[key] = template;
-              return `>{{ $t("${key}", { props: ${expression} }) }}<`;
-            }
-          }
-        }
-        return match;
-      }
-    );
-
-    // 处理三元表达式中的中文
+    // 处理三元表达式中的中文字符串（需要先处理这个，避免与其他规则冲突）
     const ternaryRegex = /\{\{([^}]+)\}\}/g;
     processedTemplate = processedTemplate.replace(
       ternaryRegex,
       (match, expression) => {
-        // 替换表达式中的中文字符串
-        const processedExpression = expression
-          .replace(/'([^']*[\u4e00-\u9fa5][^']*)'/g, (_, text) => {
+        if (expression.includes("$t(")) return match;
+
+        // 只处理包含引号的中文字符串
+        if (!/['"].*[\u4e00-\u9fa5].*['"]/.test(expression)) return match;
+
+        const processedExpression = expression.replace(
+          /(['"])((?:(?!\1).)*[\u4e00-\u9fa5](?:(?!\1).)*)\1/g,
+          (str, quote, text) => {
             const key = generateKey(text, filePath);
             translations[key] = text;
             return `$t("${key}")`;
-          })
-          .replace(/"([^"]*[\u4e00-\u9fa5][^"]*)"/g, (_, text) => {
-            const key = generateKey(text, filePath);
-            translations[key] = text;
-            return `$t("${key}")`;
-          });
+          }
+        );
 
         return `{{ ${processedExpression} }}`;
       }
     );
+
+     // 处理包含中文和插值表达式的内容
+     const mixedContentRegex = />([^<>]*?)(\{\{[\s\S]*?\}\}(?:[^<>]*?\{\{[\s\S]*?\}\})*)[^<>]*?</g;
+     processedTemplate = processedTemplate.replace(
+       mixedContentRegex,
+       (match, before, interpolations) => {
+         if (!/[\u4e00-\u9fa5]/.test(match)) return match;
+         if (/\$t\(['"].*['"]\)/.test(match)) return match;
+ 
+         const expressions = [];
+         let template = '';
+         let count = 1;
+ 
+         // 提取所有文本和插值表达式
+         const fullText = match.slice(1, -1); // 移除开头的>和结尾的<
+         let currentText = '';
+         let result = fullText;
+ 
+         // 逐个处理每个插值表达式
+         while (result.includes('{{')) {
+           const startIdx = result.indexOf('{{');
+           currentText += result.slice(0, startIdx);
+           result = result.slice(startIdx);
+           
+           const endIdx = result.indexOf('}}') + 2;
+           const expr = result.slice(2, endIdx - 2).trim();
+           expressions.push(expr);
+           
+           currentText += `{props${count}}`;
+           count++;
+           
+           result = result.slice(endIdx);
+         }
+         currentText += result;
+ 
+         // 清理和格式化模板
+         template = currentText.replace(/\s+/g, ' ').trim();
+ 
+         if (/[\u4e00-\u9fa5]/.test(template)) {
+           const key = generateKey(template, filePath);
+           translations[key] = template;
+           const propsObj = expressions
+             .map((expr, index) => `props${index + 1}: ${expr}`)
+             .join(", ");
+           return `>{{ $t("${key}", { ${propsObj} }) }}<`;
+         }
+         return match;
+       }
+     );
+
 
     // 最后一步处理 >中文< 模式的内容
     const betweenTagsRegex = />([^<>]*[\u4e00-\u9fa5][^<>]*)</g;
